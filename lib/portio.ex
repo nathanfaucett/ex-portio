@@ -1,6 +1,7 @@
 defmodule Portio do
 
   defmodule Listener do
+
     def init(external_program) do
       port = Port.open(
         {:spawn, external_program},
@@ -10,19 +11,19 @@ defmodule Portio do
 
     defp loop(port) do
       receive do
-        {:message, caller, message} ->
+        {:message, caller, uuid, message} ->
           send(port, {self, {:command, message}})
           receive do
             {^port, {:data, result}} ->
-              send(caller, {:receive,
+              send(caller, {:receive, uuid,
                 String.slice(result, 0..(String.length(result) - 2))})
           end
           loop(port)
-        {:stop, caller} ->
+        {:stop, caller, uuid} ->
           send(port, {self, :close})
           receive do
             {^port, :closed} ->
-              send(caller, :stopped)
+              send(caller, {:stopped, uuid})
           end
       end
     end
@@ -34,10 +35,12 @@ defmodule Portio do
   end
 
   def stop(pid) do
+    uuid = UUID.uuid1()
+
     if Process.alive?(pid) do
-      send(pid, {:stop, self})
+      send(pid, {:stop, self, uuid})
       receive do
-        :stopped ->
+        {:stopped, uuid} ->
           Process.exit(pid, :stop)
       end
     else
@@ -46,10 +49,12 @@ defmodule Portio do
   end
 
   def send_message(pid, message) do
+    uuid = UUID.uuid1()
+
     if Process.alive?(pid) do
-      send(pid, {:message, self, message <> "\n"})
+      send(pid, {:message, self, uuid, message <> "\n"})
       receive do
-        {:receive, data} ->
+        {:receive, uuid, data} ->
           data
       end
     end
