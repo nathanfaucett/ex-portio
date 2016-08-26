@@ -1,45 +1,57 @@
 defmodule Portio do
-  use Application
-
-  @external_program "../../rust_code/rs-portio/target/release/portio"
-
 
   defmodule Listener do
     def init(external_program) do
-      Process.flag(:trap_exit, true)
       port = Port.open(
         {:spawn, external_program},
         [:binary, :use_stdio, :stderr_to_stdout])
       loop(port)
     end
 
-    def loop(port) do
+    defp loop(port) do
       receive do
-        {:send, caller, message} ->
-          send(port, {self, {:command, message <> "\n"}})
+        {:message, caller, message} ->
+          send(port, {self, {:command, message}})
           receive do
             {^port, {:data, result}} ->
-              send(caller, {
-                :receive,
+              send(caller, {:receive,
                 String.slice(result, 0..(String.length(result) - 2))})
           end
           loop(port)
+        {:stop, caller} ->
+          send(port, {self, :close})
+          receive do
+            {^port, :closed} ->
+              send(caller, :stopped)
+          end
       end
     end
   end
 
 
-  def start(_type, _args) do
-    pid = spawn(Listener, :init, [@external_program])
-    Agent.start_link(fn -> pid end, name: __MODULE__)
+  def start(external_program) do
+    spawn(Listener, :init, [external_program])
   end
 
-  def send(message) do
-    pid = Agent.get(__MODULE__, fn(pid) -> pid end)
-    send(pid, {:send, self, message})
-    receive do
-      {:receive, data} ->
-        data
+  def stop(pid) do
+    if Process.alive?(pid) do
+      send(pid, {:stop, self})
+      receive do
+        :stopped ->
+          Process.exit(pid, :stop)
+      end
+    else
+      false
+    end
+  end
+
+  def send_message(pid, message) do
+    if Process.alive?(pid) do
+      send(pid, {:message, self, message <> "\n"})
+      receive do
+        {:receive, data} ->
+          data
+      end
     end
   end
 end

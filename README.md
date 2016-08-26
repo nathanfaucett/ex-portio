@@ -2,6 +2,11 @@
 
 port io helper
 
+## Usage
+
+set external program to run on start up
+config :portio, external_program: "../../rust_code/rs-portio/target/release/portio"
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed as:
